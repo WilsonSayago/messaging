@@ -1,4 +1,4 @@
-module messaging
+module github.com/WilsonSayago/messaging
 
 go 1.21.4
 
