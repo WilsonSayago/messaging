@@ -10,7 +10,7 @@ import (
 	"syscall"
 )
 
-type RabbitMQWrapper struct {
+type ClientWrapper struct {
 	channel *amqp.Channel
 	queue   *amqp.Queue
 	consume <-chan amqp.Delivery
@@ -18,33 +18,33 @@ type RabbitMQWrapper struct {
 
 func InitSubscriber(queue string, protocol string, user string, pass string, host string, port string, prefetchCount int, event EventHandler) {
 	client, err := NewChannel(protocol, user, pass, host, port)
-	
+
 	if err != nil {
 		log.Fatalf("Failed to create client: %v\n", err)
 	}
-	
+
 	client.Consume(queue, prefetchCount)
-	
+
 	log.Printf("Start receiving messages, queue=%s MaxMessages=%v", queue, prefetchCount)
-	
+
 	client.Receive(event)
 }
 
-func NewChannel(protocol string, user string, pass string, host string, port string) (*RabbitMQWrapper, error) {
+func NewChannel(protocol string, user string, pass string, host string, port string) (*ClientWrapper, error) {
 	conn, err := amqp.Dial(fmt.Sprintf("%s://%s:%s@%s:%s?hearbeat=60", protocol, user, pass, host, port))
 	if err != nil {
 		log.Fatalf("Error connecting to RabbitMQ: %s", err)
 	}
-	
+
 	ch, err := conn.Channel()
 	if err != nil {
 		log.Fatalf("Error opening channel: %s", err)
 	}
-	
-	return &RabbitMQWrapper{channel: ch}, nil
+
+	return &ClientWrapper{channel: ch}, nil
 }
 
-func (rw *RabbitMQWrapper) CloseChannel() error {
+func (rw *ClientWrapper) CloseChannel() error {
 	err := rw.channel.Close()
 	if err != nil {
 		log.Printf("Failed to close client: %v\n", err)
@@ -52,7 +52,7 @@ func (rw *RabbitMQWrapper) CloseChannel() error {
 	return err
 }
 
-func (rw *RabbitMQWrapper) Consume(queue string, prefetchCount int) {
+func (rw *ClientWrapper) Consume(queue string, prefetchCount int) {
 	// Configurar el prefetch count para este canal.
 	err := rw.channel.Qos(
 		prefetchCount, // prefetch count
@@ -62,7 +62,7 @@ func (rw *RabbitMQWrapper) Consume(queue string, prefetchCount int) {
 	if err != nil {
 		log.Fatalf("Failed to set QoS: %s", err)
 	}
-	
+
 	consume, err := rw.channel.Consume(
 		queue, //q.Name, // Nombre de la cola
 		"",    // Identificador del consumidor (vacío para uno generado por RabbitMQ)
@@ -75,11 +75,11 @@ func (rw *RabbitMQWrapper) Consume(queue string, prefetchCount int) {
 	if err != nil {
 		log.Fatalf("Error registering consumer: %s", err)
 	}
-	
+
 	rw.consume = consume
 }
 
-func (rw *RabbitMQWrapper) Publish(exchange string, queue string, payload []byte, attr map[string]string) error {
+func (rw *ClientWrapper) Publish(exchange string, queue string, payload []byte, attr map[string]string) error {
 	err := rw.channel.PublishWithContext(
 		context.TODO(),
 		exchange,
@@ -106,14 +106,14 @@ func (rw *RabbitMQWrapper) Publish(exchange string, queue string, payload []byte
 	return err
 }
 
-func (rw *RabbitMQWrapper) Receive(event EventHandler) {
+func (rw *ClientWrapper) Receive(event EventHandler) {
 	go func() {
 		for d := range rw.consume {
 			fmt.Printf("Message received: %s\n", d.Body)
 			event.Handle(&d)
 		}
 	}()
-	
+
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 	<-stop
