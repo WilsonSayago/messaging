@@ -1,6 +1,6 @@
 module github.com/WilsonSayago/messaging
 
-go 1.21.4
+go 1.24.0
 
 require (
 	cloud.google.com/go/pubsub v1.37.0
